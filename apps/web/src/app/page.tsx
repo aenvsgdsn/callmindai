@@ -2,24 +2,40 @@
 
 import Link from "next/link";
 import {
-  ArrowRight, Bot, Building2, CheckCircle2, ChevronRight,
+  ArrowRight, Bot, CheckCircle2, ChevronRight,
   Menu, MessageSquare, PhoneCall, ShieldCheck, TrendingUp, X
 } from "lucide-react";
-import Image from "next/image";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import CallMindLogo from "./components/CallMindLogo";
 
 export default function MarketingPage() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [navHidden, setNavHidden] = useState(false);
+  const [lastScrollY, setLastScrollY] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (currentScrollY > lastScrollY && currentScrollY > 60) {
+        setNavHidden(true);
+      } else {
+        setNavHidden(false);
+      }
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [lastScrollY]);
 
   return (
     <div className="marketing-layout">
 
       {/* ── Navbar ── */}
-      <nav className="marketing-nav">
+      <nav className={`marketing-nav ${navHidden ? "nav-hidden" : ""}`}>
         <div className="nav-container">
           <div className="nav-logo">
-            <div className="logo-icon"><Building2 size={20} color="#fff" /></div>
-            <span className="logo-text">CallMind AI</span>
+            <CallMindLogo size={30} showText={true} />
           </div>
 
           {/* Desktop links */}
@@ -57,62 +73,73 @@ export default function MarketingPage() {
       </nav>
 
       {/* ── Hero ── */}
-      <section className="hero-section">
-        {/* Left: Text content */}
-        <div className="hero-content">
+      <div className="hero-wrapper">
+        <div className="hero-bg" />
+        <section className="hero-section">
+          {/* Text content */}
+          <div className="hero-content">
 
-          <h1 className="hero-title">
-            Turn property inquiries into{" "}
-            <span className="text-gradient">qualified opportunities.</span>
-          </h1>
+            <h1 className="hero-title">
+              Turn property inquiries into{" "}
+              <span className="text-gradient">qualified opportunities.</span>
+            </h1>
 
-          <p className="hero-subtitle">
-            CallMind AI handles initial conversations, extracts property
-            requirements, and qualifies leads 24/7—while you maintain complete
-            human control.
-          </p>
+            <p className="hero-subtitle">
+              CallMind AI handles initial conversations, extracts property
+              requirements, and qualifies leads 24/7—while you maintain complete
+              human control.
+            </p>
 
-          <div className="hero-actions">
-            <button className="btn-primary btn-large">
-              Start Free Trial <ArrowRight size={18} />
-            </button>
-            <button className="btn-secondary btn-large">
-              View Interactive Demo
-            </button>
+            <div className="hero-actions">
+              <button className="btn-primary btn-large">
+                Start Free Trial <ArrowRight size={17} />
+              </button>
+              <button className="btn-ghost btn-large">
+                View Interactive Demo <ArrowRight size={16} />
+              </button>
+            </div>
+
+            <div className="hero-stats">
+              <div className="hero-stat-item">
+                <span className="stat-num">3.5x</span>
+                <span className="stat-label">Higher Conversion</span>
+              </div>
+              <div className="hero-stat-item">
+                <span className="stat-num">24/7</span>
+                <span className="stat-label">Lead Qualification</span>
+              </div>
+              <div className="hero-stat-item">
+                <span className="stat-num">100%</span>
+                <span className="stat-label">Human Control</span>
+              </div>
+            </div>
           </div>
+        </section>
 
-          <div className="hero-stats">
-            <div className="hero-stat-item">
-              <span className="stat-num">3.5x</span>
-              <span className="stat-label">Higher Conversion</span>
-            </div>
-            <div className="hero-stat-item">
-              <span className="stat-num">24/7</span>
-              <span className="stat-label">Lead Qualification</span>
-            </div>
-            <div className="hero-stat-item">
-              <span className="stat-num">100%</span>
-              <span className="stat-label">Human Control</span>
-            </div>
-          </div>
+        {/* ── Concave scoop bottom cut ── */}
+        <div className="hero-scoop">
+          <svg
+            viewBox="0 0 1440 80"
+            preserveAspectRatio="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            {/*
+              Concave scoop: starts at bottom-left (0,80),
+              curves up to the center peak (~40px high), then back down to bottom-right.
+              Filled with the page background color to "cut" into the hero.
+            */}
+            <path
+              d="M0,80 L0,60 Q360,0 720,36 Q1080,72 1440,20 L1440,80 Z"
+              fill="#f8faf9"
+            />
+          </svg>
         </div>
-
-        {/* Right: Visual */}
-        <div className="hero-visual">
-          <Image
-            src="/bg-hero.jpg"
-            alt="CallMind AI real estate intelligence platform"
-            width={600}
-            height={520}
-            className="hero-bg-image"
-            priority
-          />
-        </div>
-      </section>
+      </div>
 
       {/* ── Features ── */}
       <section id="features" className="features-section">
         <div className="section-header">
+          <span className="section-eyebrow">Built for Real Estate Teams</span>
           <h2 className="section-title">Serious Real Estate Operations</h2>
           <p className="section-subtitle">
             Not a generic chatbot. A purpose-built intelligence layer for
@@ -154,6 +181,7 @@ export default function MarketingPage() {
       <section id="workflow" className="workflow-section">
         <div className="workflow-container glass-surface">
           <div className="workflow-content">
+            <span className="section-eyebrow" style={{ marginBottom: 12, display: "inline-block" }}>How It Works</span>
             <h2 className="section-title" style={{ textAlign: "left" }}>
               The Conversion Engine
             </h2>
@@ -193,10 +221,7 @@ export default function MarketingPage() {
       <footer className="marketing-footer">
         <div className="footer-content">
           <div className="footer-brand">
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div className="logo-icon-small"><Building2 size={18} color="#fff" /></div>
-              <span className="logo-text">CallMind AI</span>
-            </div>
+            <CallMindLogo size={28} showText={true} />
             <p className="footer-desc">
               The intelligence layer for modern real estate operations.
             </p>
