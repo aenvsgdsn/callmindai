@@ -109,7 +109,7 @@ function LoginModal({ onSuccess }: { onSuccess: () => void }) {
   const [password, setPassword] = useState("admin123");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const supabase = createClient();
+
 
   async function handlePasswordLogin(e: React.FormEvent) {
     e.preventDefault();
