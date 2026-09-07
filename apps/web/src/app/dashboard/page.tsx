@@ -1316,6 +1316,22 @@ function AnalyticsPage({ summary, weeklyData, funnelData, channelData }: {
 
 // ─── Settings Page ─────────────────────────────────────────────────────────────
 
+type ToggleProps = { label: string; desc: string; val: boolean; set: (v: boolean) => void };
+function Toggle({ label, desc, val, set }: ToggleProps) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0", borderBottom: "1px solid var(--glass-border)" }}>
+      <div>
+        <div style={{ fontWeight: 600, fontSize: 14 }}>{label}</div>
+        <div style={{ fontSize: 12, color: "var(--ink-secondary)", marginTop: 2 }}>{desc}</div>
+      </div>
+      <div onClick={() => { set(!val); toast(label + (val ? " disabled" : " enabled"), "info"); }}
+        style={{ width: 44, height: 24, borderRadius: 12, cursor: "pointer", transition: "background 200ms", background: val ? "#0d9488" : "rgba(0,0,0,0.1)", position: "relative", flexShrink: 0 }}>
+        <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: val ? 23 : 3, transition: "left 200ms ease", boxShadow: "0 1px 4px rgba(0,0,0,0.2)" }} />
+      </div>
+    </div>
+  );
+}
+
 function SettingsPage() {
   const user = getUser();
   const [activeTab, setActiveTab] = useState("profile");
@@ -1335,20 +1351,6 @@ function SettingsPage() {
     { id: "ai", label: "AI Settings", icon: <Brain size={15} /> },
     { id: "security", label: "Security", icon: <Shield size={15} /> },
   ];
-
-  type ToggleProps = { label: string; desc: string; val: boolean; set: (v: boolean) => void };
-  const Toggle = ({ label, desc, val, set }: ToggleProps) => (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0", borderBottom: "1px solid var(--glass-border)" }}>
-      <div>
-        <div style={{ fontWeight: 600, fontSize: 14 }}>{label}</div>
-        <div style={{ fontSize: 12, color: "var(--ink-secondary)", marginTop: 2 }}>{desc}</div>
-      </div>
-      <div onClick={() => { set(!val); toast(label + (val ? " disabled" : " enabled"), "info"); }}
-        style={{ width: 44, height: 24, borderRadius: 12, cursor: "pointer", transition: "background 200ms", background: val ? "#0d9488" : "rgba(0,0,0,0.1)", position: "relative", flexShrink: 0 }}>
-        <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: val ? 23 : 3, transition: "left 200ms ease", boxShadow: "0 1px 4px rgba(0,0,0,0.2)" }} />
-      </div>
-    </div>
-  );
 
   const inputStyle = { width: "100%", padding: "10px 14px", border: "1px solid var(--glass-border)", borderRadius: 10, fontSize: 14, background: "rgba(255,255,255,0.7)", color: "var(--ink-primary)", outline: "none", fontFamily: "var(--font-display)" };
 
