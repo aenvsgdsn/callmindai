@@ -1444,19 +1444,11 @@ export default function Dashboard() {
   const [channelData, setChannelData] = useState<ChannelDataPoint[]>([]);
   const [loading, setLoading] = useState({ leads: true, strategies: true, conversations: true, appointments: true, analytics: true });
 
-  const supabase = createClient();
-
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setAuthenticated(!!session);
-    });
-    
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthenticated(!!session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [supabase]);
+    // Check custom FastAPI backend token instead of Supabase
+    const token = typeof window !== "undefined" ? localStorage.getItem("callmind_token") : null;
+    setAuthenticated(!!token);
+  }, []);
 
   const fetchAll = useCallback(async () => {
     if (!authenticated) return;
