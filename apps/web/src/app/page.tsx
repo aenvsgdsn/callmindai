@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import {
-  ArrowRight, Bot, CheckCircle2, ChevronRight,
-  Menu, MessageSquare, PhoneCall, ShieldCheck, TrendingUp, X
+  ArrowRight, ChevronRight,
+  PhoneCall, ShieldCheck, TrendingUp,
+  Menu, X
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import CallMindLogo from "./components/CallMindLogo";
@@ -23,7 +24,6 @@ export default function MarketingPage() {
       }
       setLastScrollY(currentScrollY);
     };
-
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, [lastScrollY]);
@@ -47,7 +47,6 @@ export default function MarketingPage() {
 
           <div className="nav-actions desktop-only">
             <Link href="/dashboard" className="btn-secondary">Log In</Link>
-            <button className="btn-primary">Get a Demo</button>
           </div>
 
           {/* Mobile hamburger */}
@@ -62,12 +61,18 @@ export default function MarketingPage() {
 
         {mobileOpen && (
           <div className="mobile-menu">
+            {/* Login — highlighted at top */}
+            <Link href="/dashboard" className="mobile-nav-login-btn" onClick={() => setMobileOpen(false)}>
+              Log In
+            </Link>
+            <div className="mobile-nav-divider" />
             <Link href="#features" className="mobile-nav-link" onClick={() => setMobileOpen(false)}>Features</Link>
             <Link href="#workflow" className="mobile-nav-link" onClick={() => setMobileOpen(false)}>Workflow</Link>
             <Link href="#security" className="mobile-nav-link" onClick={() => setMobileOpen(false)}>Security</Link>
             <div className="mobile-nav-divider" />
-            <Link href="/dashboard" className="mobile-nav-link" onClick={() => setMobileOpen(false)}>Log In</Link>
-            <button className="btn-primary" style={{ marginTop: 12, justifyContent: "center" }}>Get a Demo</button>
+            <Link href="/dashboard" className="btn-primary" style={{ justifyContent: "center", marginTop: 4 }} onClick={() => setMobileOpen(false)}>
+              Start Free Trial <ArrowRight size={15} />
+            </Link>
           </div>
         )}
       </nav>
@@ -76,7 +81,6 @@ export default function MarketingPage() {
       <div className="hero-wrapper">
         <div className="hero-bg" />
         <section className="hero-section">
-          {/* Text content */}
           <div className="hero-content">
 
             <h1 className="hero-title">
@@ -90,13 +94,11 @@ export default function MarketingPage() {
               human control.
             </p>
 
+            {/* Single CTA */}
             <div className="hero-actions">
-              <button className="btn-primary btn-large">
+              <Link href="/dashboard" className="btn-primary btn-large" id="start-free-trial-btn">
                 Start Free Trial <ArrowRight size={17} />
-              </button>
-              <button className="btn-ghost btn-large">
-                View Interactive Demo <ArrowRight size={16} />
-              </button>
+              </Link>
             </div>
 
             <div className="hero-stats">
@@ -123,11 +125,6 @@ export default function MarketingPage() {
             preserveAspectRatio="none"
             xmlns="http://www.w3.org/2000/svg"
           >
-            {/*
-              Concave scoop: starts at bottom-left (0,80),
-              curves up to the center peak (~40px high), then back down to bottom-right.
-              Filled with the page background color to "cut" into the hero.
-            */}
             <path
               d="M0,80 L0,60 Q360,0 720,36 Q1080,72 1440,20 L1440,80 Z"
               fill="#f8faf9"
@@ -201,7 +198,7 @@ export default function MarketingPage() {
                 </li>
               ))}
             </ul>
-            <Link href="/dashboard" className="btn-primary">
+            <Link href="/dashboard" className="btn-primary" id="workflow-cta-btn">
               See it in action <ChevronRight size={16} />
             </Link>
           </div>
@@ -214,6 +211,29 @@ export default function MarketingPage() {
               <div className="funnel-layer l-4">Booked</div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ── Security section ── */}
+      <section id="security" className="features-section" style={{ paddingTop: 40 }}>
+        <div className="section-header">
+          <span className="section-eyebrow">Enterprise Grade</span>
+          <h2 className="section-title">Built for Trust &amp; Compliance</h2>
+          <p className="section-subtitle">
+            Data privacy, consent management, and audit trails built in from day one.
+          </p>
+        </div>
+        <div className="features-grid" style={{ gridTemplateColumns: "repeat(2, 1fr)", maxWidth: 720, margin: "0 auto" }}>
+          {[
+            { icon: <ShieldCheck size={24} />, cls: "green", h: "Consent Management", p: "Full GDPR & CCPA compliant lead consent tracking with opt-in/opt-out records." },
+            { icon: <ShieldCheck size={24} />, cls: "violet", h: "Audit Logs", p: "Every AI action is recorded with a full audit trail you can review at any time." },
+          ].map((f, i) => (
+            <div key={i} className="glass-card feature-card">
+              <div className={`feature-icon ${f.cls}`}>{f.icon}</div>
+              <h3>{f.h}</h3>
+              <p>{f.p}</p>
+            </div>
+          ))}
         </div>
       </section>
 

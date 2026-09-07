@@ -486,8 +486,29 @@ p { margin: 0; line-height: 1.6; }
   font-size: 15px; font-weight: 500; color: var(--ink-primary);
   padding: 11px 14px; border-radius: 14px; display: block;
   transition: background 150ms ease;
+  text-align: center;
 }
 .mobile-nav-link:hover { background: rgba(0,0,0,0.04); }
+
+/* Highlighted Login button in mobile menu */
+.mobile-nav-login-btn {
+  display: block;
+  text-align: center;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0d9488;
+  background: rgba(13,148,136,0.08);
+  border: 1.5px solid rgba(13,148,136,0.22);
+  transition: background 150ms ease, border-color 150ms ease;
+  letter-spacing: -0.01em;
+}
+.mobile-nav-login-btn:hover {
+  background: rgba(13,148,136,0.14);
+  border-color: rgba(13,148,136,0.38);
+}
+
 .mobile-nav-divider { height: 1px; background: rgba(0,0,0,0.06); margin: 6px 0; }
 
 /* --- Hero --- */
