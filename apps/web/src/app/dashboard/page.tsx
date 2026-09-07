@@ -24,7 +24,7 @@ import {
   CreateAppointmentPayload,
   getAvatarColor, formatDate, getIntentScore,
 } from "../lib/api";
-import { createClient } from "../../utils/supabase/client";
+
 
 // Email validation helper
 function isValidEmail(email: string): boolean {
