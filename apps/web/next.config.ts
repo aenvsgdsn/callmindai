@@ -10,10 +10,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // Ignore ESLint and TS errors during builds to unblock Vercel deployments
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  // Ignore TypeScript errors during builds to unblock Vercel deployments
   typescript: {
     ignoreBuildErrors: true,
   },
