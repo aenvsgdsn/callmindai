@@ -584,7 +584,7 @@ function DashboardHome({ summary, weeklyData, monthlyData, funnelData, leads, st
   const chartData = chartRange === "week" ? weeklyData : monthlyData;
   const maxVal = Math.max(...chartData.map(d => d.conversations), 1);
 
-  const hotLeadsCount = leads.filter(l => l.score >= 80 && l.status === "new").length;
+  const hotLeadsCount = leads.filter(l => (l.score ?? 0) >= 80 && l.status === "new").length;
   const pendingStrategiesCount = strategies.filter(s => s.status === "pending_approval").length;
 
   const mockRecommendations = [
