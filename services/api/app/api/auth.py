@@ -1,23 +1,32 @@
 """
-Authentication router: POST /auth/login
-Returns a JWT token for use in all other API calls.
+Authentication: POST /auth/login, POST /auth/register
+Uses Supabase `users` table (service role) + local JWT minting.
 """
+import bcrypt
 import jwt
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.database import get_db
-from app.db.models import User, Agency
+from app.db.supabase_client import sb
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
+# ── Schemas ───────────────────────────────────────────────────────────────────
+
 class LoginRequest(BaseModel):
     email: str
     password: str
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    name: str
+    agency_name: str
+    role: str = "agency_admin"
 
 
 class LoginResponse(BaseModel):
@@ -29,115 +38,88 @@ class LoginResponse(BaseModel):
     role: str
 
 
-class RegisterRequest(BaseModel):
-    email: str
-    password: str
-    name: str
-    agency_name: str
-    role: str = "agency_admin"
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _hash(plain: str) -> str:
+    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
 
 
-def create_access_token(user_id: str, agency_id: str, email: str, role: str) -> str:
+def _verify(plain: str, hashed: str) -> bool:
+    if not hashed:
+        return False
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except Exception:
+        return plain == hashed   # dev fallback for unhashed seeds
+
+
+def _mint_token(user_id: str, agency_id: str, email: str, role: str) -> str:
     payload = {
-        "sub": user_id,
+        "sub":       user_id,
         "agency_id": agency_id,
-        "email": email,
-        "role": role,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=24),
+        "email":     email,
+        "role":      role,
+        "exp":       datetime.now(timezone.utc) + timedelta(hours=24),
     }
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-import bcrypt
-
-def verify_password(plain: str, hashed: str) -> bool:
-    """Password check using direct bcrypt or fallback string comparison."""
-    if not hashed:
-        return False
-    if hashed.startswith("$2"):
-        try:
-            return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
-        except Exception:
-            pass
-    return plain == hashed
-
-
-def hash_password(plain: str) -> str:
-    """Hash password using direct bcrypt."""
-    try:
-        salt = bcrypt.gensalt()
-        return bcrypt.hashpw(plain.encode("utf-8"), salt).decode("utf-8")
-    except Exception:
-        return plain
-
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == payload.email.lower().strip()).first()
+def login(payload: LoginRequest):
+    email = payload.email.lower().strip()
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
-        )
+    res = sb().table("users").select(
+        "id, agency_id, name, email, password_hash, role"
+    ).eq("email", email).single().execute()
 
-    # If user has no password_hash (seeded without password), allow dev login
-    if user.password_hash:
-        if not verify_password(payload.password, user.password_hash):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password",
-            )
-    # else: dev-seeded user with no password — allow any password in dev mode
+    if not res.data:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    token = create_access_token(
-        user_id=user.id,
-        agency_id=user.agency_id,
-        email=user.email,
-        role=user.role,
-    )
+    user = res.data
+
+    if user.get("password_hash") and not _verify(payload.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = _mint_token(user["id"], user["agency_id"], user["email"], user["role"])
     return LoginResponse(
         access_token=token,
-        user_id=user.id,
-        agency_id=user.agency_id,
-        name=user.name,
-        role=user.role,
+        user_id=user["id"],
+        agency_id=user["agency_id"],
+        name=user["name"],
+        role=user["role"],
     )
 
 
 @router.post("/register", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, db: Session = Depends(get_db)):
-    """Register a new agency + admin user."""
-    existing = db.query(User).filter(User.email == payload.email.lower().strip()).first()
-    if existing:
+def register(payload: RegisterRequest):
+    email = payload.email.lower().strip()
+
+    # Check duplicate email
+    existing = sb().table("users").select("id").eq("email", email).execute()
+    if existing.data:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    agency = Agency(name=payload.agency_name)
-    db.add(agency)
-    db.commit()
-    db.refresh(agency)
+    # Create agency
+    agency_res = sb().table("agencies").insert({"name": payload.agency_name}).execute()
+    agency = agency_res.data[0]
 
-    user = User(
-        agency_id=agency.id,
-        name=payload.name,
-        email=payload.email.lower().strip(),
-        password_hash=hash_password(payload.password),
-        role=payload.role,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    # Create user
+    user_res = sb().table("users").insert({
+        "agency_id":     agency["id"],
+        "name":          payload.name,
+        "email":         email,
+        "password_hash": _hash(payload.password),
+        "role":          payload.role,
+    }).execute()
+    user = user_res.data[0]
 
-    token = create_access_token(
-        user_id=user.id,
-        agency_id=agency.id,
-        email=user.email,
-        role=user.role,
-    )
+    token = _mint_token(user["id"], agency["id"], user["email"], user["role"])
     return LoginResponse(
         access_token=token,
-        user_id=user.id,
-        agency_id=agency.id,
-        name=user.name,
-        role=user.role,
+        user_id=user["id"],
+        agency_id=agency["id"],
+        name=user["name"],
+        role=user["role"],
     )

@@ -3,7 +3,7 @@
  * All communication with the FastAPI backend goes through here.
  */
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 const API_PREFIX = "/api/v1";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -174,6 +174,9 @@ async function apiFetch<T>(
 
   if (res.status === 401) {
     clearAuth();
+    if (typeof window !== "undefined") {
+      window.location.reload();
+    }
     throw new Error("UNAUTHORIZED");
   }
 
@@ -199,6 +202,8 @@ export async function login(email: string, password: string): Promise<LoginRespo
   }
   return res.json();
 }
+
+
 
 export async function register(payload: {
   email: string;
@@ -309,6 +314,47 @@ export const analyticsApi = {
   monthly: () => apiFetch<WeeklyDataPoint[]>("/analytics/monthly"),
   funnel: () => apiFetch<FunnelDataPoint[]>("/analytics/funnel"),
   channels: () => apiFetch<ChannelDataPoint[]>("/analytics/channels"),
+};
+
+// ─── Users API ────────────────────────────────────────────────────────────────
+
+export interface UserProfile {
+  id: string;
+  agency_id: string;
+  name: string;
+  email: string;
+  role: string;
+  avatar_url: string | null;
+  created_at: string;
+}
+
+export const usersApi = {
+  me: () => apiFetch<UserProfile>("/users/me"),
+
+  updateProfile: (data: { name?: string; email?: string }) =>
+    apiFetch<UserProfile>("/users/me", { method: "PATCH", body: JSON.stringify(data) }),
+
+  updatePassword: (payload: { current_password: string; new_password: string }) =>
+    apiFetch<{ message: string }>("/users/me/password", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  uploadAvatar: async (file: File): Promise<{ avatar_url: string }> => {
+    const token = getToken();
+    const form  = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${BASE_URL}${API_PREFIX}/users/me/avatar`, {
+      method:  "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body:    form,
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d?.detail || "Upload failed");
+    }
+    return res.json();
+  },
 };
 
 // ─── Utility ──────────────────────────────────────────────────────────────────

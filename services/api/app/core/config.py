@@ -1,15 +1,15 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "CallMind AI Backend"
     API_V1_STR: str = "/api/v1"
-    DATABASE_URL: str = "sqlite:///./callmind.db"
     JWT_SECRET_KEY: str = "super-secret-key-change-in-production"
     JWT_ALGORITHM: str = "HS256"
-    DASHSCOPE_API_KEY: str = ""
+
+    # Supabase — all data goes through supabase-py
     SUPABASE_URL: str = ""
     SUPABASE_ANON_KEY: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""  # backend uses this to bypass RLS
 
     # Email / SMTP
     SMTP_ENABLED: bool = False
@@ -22,4 +22,5 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
 
-settings = Settings()
+settings = Settings()
+

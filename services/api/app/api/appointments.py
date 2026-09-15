@@ -1,45 +1,29 @@
 """
-Appointments router: manage scheduled viewings, consultations, etc.
+Appointments router — Supabase-powered.
+Auto lead-status transition is handled by PostgreSQL trigger (on_appointment_created).
+Uses PostgREST JOIN for lead + agent name in a single query.
 """
-from typing import List, Optional
-from datetime import datetime
+from typing import Optional
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
-import threading
 
-from app.db.database import get_db
-from app.db.models import Appointment, Lead
+from app.db.supabase_client import sb
 from app.core.security import CurrentUser, get_current_user
 from app.services.email_service import send_appointment_email
+import threading
 
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
-
 
 AVATAR_COLORS = ["v", "b", "g", "a", "r"]
 
 
-class AppointmentResponse(BaseModel):
-    id: str
+# ── Schemas ───────────────────────────────────────────────────────────────────
+
+class AppointmentCreate(BaseModel):
     lead_id: str
-    lead_name: str
-    lead_avatar: str
-    date: str
-    time: str
-    duration: str
-    appointment_type: str
-    property_address: Optional[str]
-    agent: Optional[str]
-    status: str
-    notes: Optional[str]
-
-    class Config:
-        from_attributes = True
-
-
-class CreateAppointmentRequest(BaseModel):
-    lead_id: str
-    date: str
+    # ISO datetime string from frontend e.g. "2026-09-20T14:00:00"
+    date: str           # kept as "date" for frontend compat — stored as scheduled_at
     time: str
     duration: str = "60 min"
     appointment_type: str = "Property Viewing"
@@ -48,81 +32,122 @@ class CreateAppointmentRequest(BaseModel):
     notes: Optional[str] = None
 
 
-class UpdateAppointmentRequest(BaseModel):
+class AppointmentUpdate(BaseModel):
     status: Optional[str] = None
     notes: Optional[str] = None
     date: Optional[str] = None
     time: Optional[str] = None
 
 
-def _enrich(appt: Appointment, lead: Optional[Lead], idx: int) -> AppointmentResponse:
-    return AppointmentResponse(
-        id=appt.id,
-        lead_id=appt.lead_id,
-        lead_name=lead.name if lead else "Unknown",
-        lead_avatar=AVATAR_COLORS[idx % len(AVATAR_COLORS)],
-        date=appt.date,
-        time=appt.time,
-        duration=appt.duration,
-        appointment_type=appt.appointment_type,
-        property_address=appt.property_address,
-        agent=appt.agent,
-        status=appt.status,
-        notes=appt.notes,
-    )
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _enrich(appt: dict, idx: int) -> dict:
+    """Flatten PostgREST nested join + format for frontend."""
+    lead  = appt.get("lead")  or {}
+    agent = appt.get("agent_user") or {}
+
+    # Parse scheduled_at back to date/time strings the frontend expects
+    scheduled_at = appt.get("scheduled_at", "")
+    try:
+        dt = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+        date_str = dt.strftime("%b %d, %Y")
+        time_str = dt.strftime("%-I:%M %p") if appt.get("time") is None else appt.get("time","")
+    except Exception:
+        date_str = appt.get("date", scheduled_at)
+        time_str = appt.get("time", "")
+
+    dur_min = appt.get("duration_minutes", 60)
+
+    return {
+        "id":               appt["id"],
+        "lead_id":          appt["lead_id"],
+        "lead_name":        lead.get("name", "Unknown"),
+        "lead_email":       lead.get("email"),
+        "lead_avatar":      AVATAR_COLORS[idx % len(AVATAR_COLORS)],
+        "date":             date_str,
+        "time":             time_str,
+        "duration":         f"{dur_min} min",
+        "appointment_type": appt.get("appointment_type", "Property Viewing"),
+        "property_address": appt.get("property_address"),
+        "agent":            agent.get("name") or appt.get("agent_name"),
+        "status":           appt.get("status", "pending"),
+        "notes":            appt.get("notes"),
+        "confirmation_token": appt.get("confirmation_token"),
+    }
 
 
-@router.get("", response_model=List[AppointmentResponse])
-def list_appointments(
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(get_current_user),
-):
-    appts = db.query(Appointment).filter(
-        Appointment.agency_id == current_user.agency_id
-    ).order_by(Appointment.created_at.desc()).all()
-
-    result = []
-    for i, appt in enumerate(appts):
-        lead = db.query(Lead).filter(Lead.id == appt.lead_id).first()
-        result.append(_enrich(appt, lead, i))
-    return result
+def _parse_scheduled_at(date_str: str, time_str: str) -> str:
+    """
+    Convert frontend date ('2026-09-20') + time ('2:00 PM') to ISO datetime.
+    """
+    try:
+        dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %I:%M %p")
+        return dt.isoformat()
+    except Exception:
+        try:
+            return datetime.fromisoformat(date_str).isoformat()
+        except Exception:
+            return datetime.now(timezone.utc).isoformat()
 
 
-@router.post("", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED)
+# ── Routes ────────────────────────────────────────────────────────────────────
+
+@router.get("")
+def list_appointments(current_user: CurrentUser = Depends(get_current_user)):
+    """
+    Single optimized JOIN query — lead name + agent name in one round-trip.
+    Old code: looped N separate db.query(Lead) calls.
+    """
+    res = sb().table("appointments").select(
+        "*, lead:leads(name, email), agent_user:users(name)"
+    ).eq("agency_id", current_user.agency_id
+    ).order("scheduled_at", desc=True).execute()
+
+    return [_enrich(a, i) for i, a in enumerate(res.data or [])]
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
 def create_appointment(
-    payload: CreateAppointmentRequest,
-    db: Session = Depends(get_db),
+    payload: AppointmentCreate,
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    lead = db.query(Lead).filter(
-        Lead.id == payload.lead_id,
-        Lead.agency_id == current_user.agency_id,
-    ).first()
-    if not lead:
+    # Verify lead
+    lead_res = sb().table("leads").select("id, name, email").eq(
+        "id", payload.lead_id
+    ).eq("agency_id", current_user.agency_id).single().execute()
+    if not lead_res.data:
         raise HTTPException(status_code=404, detail="Lead not found")
+    lead = lead_res.data
 
-    appt = Appointment(
-        lead_id=lead.id,
-        agency_id=current_user.agency_id,
-        date=payload.date,
-        time=payload.time,
-        duration=payload.duration,
-        appointment_type=payload.appointment_type,
-        property_address=payload.property_address,
-        agent=payload.agent,
-        status="pending",
-        notes=payload.notes,
-    )
-    db.add(appt)
-    db.commit()
-    db.refresh(appt)
+    scheduled_at = _parse_scheduled_at(payload.date, payload.time)
+    try:
+        dur_min = int(payload.duration.split()[0])
+    except Exception:
+        dur_min = 60
 
-    # Fire-and-forget email — runs in background so it doesn't block the response
-    if lead.email:
+    res = sb().table("appointments").insert({
+        "lead_id":          payload.lead_id,
+        "agency_id":        current_user.agency_id,
+        "scheduled_at":     scheduled_at,
+        "duration_minutes": dur_min,
+        "appointment_type": payload.appointment_type,
+        "property_address": payload.property_address,
+        "notes":            payload.notes,
+        "status":           "pending",
+        # DB trigger automatically sets lead.status = 'reviewing'
+    }).execute()
+
+    appt = res.data[0]
+    appt["lead"]       = lead
+    appt["agent_user"] = {}
+    appt["time"]       = payload.time
+
+    # Fire-and-forget email confirmation
+    if lead.get("email"):
         def _send():
             send_appointment_email(
-                lead_name=lead.name,
-                lead_email=lead.email,
+                lead_name=lead["name"],
+                lead_email=lead["email"],
                 appointment_type=payload.appointment_type,
                 date=payload.date,
                 time=payload.time,
@@ -133,33 +158,34 @@ def create_appointment(
             )
         threading.Thread(target=_send, daemon=True).start()
 
-    return _enrich(appt, lead, 0)
+    return _enrich(appt, 0)
 
 
-@router.patch("/{appt_id}", response_model=AppointmentResponse)
+@router.patch("/{appt_id}")
 def update_appointment(
     appt_id: str,
-    payload: UpdateAppointmentRequest,
-    db: Session = Depends(get_db),
+    payload: AppointmentUpdate,
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    appt = db.query(Appointment).filter(
-        Appointment.id == appt_id,
-        Appointment.agency_id == current_user.agency_id,
-    ).first()
-    if not appt:
+    check = sb().table("appointments").select("id, lead_id").eq(
+        "id", appt_id
+    ).eq("agency_id", current_user.agency_id).single().execute()
+    if not check.data:
         raise HTTPException(status_code=404, detail="Appointment not found")
 
-    if payload.status is not None:
-        appt.status = payload.status
-    if payload.notes is not None:
-        appt.notes = payload.notes
-    if payload.date is not None:
-        appt.date = payload.date
-    if payload.time is not None:
-        appt.time = payload.time
+    update_data: dict = {}
+    if payload.status is not None: update_data["status"] = payload.status
+    if payload.notes  is not None: update_data["notes"]  = payload.notes
+    if payload.date   is not None:
+        update_data["scheduled_at"] = _parse_scheduled_at(
+            payload.date, payload.time or "09:00 AM"
+        )
 
-    db.commit()
-    db.refresh(appt)
-    lead = db.query(Lead).filter(Lead.id == appt.lead_id).first()
-    return _enrich(appt, lead, 0)
+    if update_data:
+        sb().table("appointments").update(update_data).eq("id", appt_id).execute()
+
+    # Return enriched record
+    res = sb().table("appointments").select(
+        "*, lead:leads(name, email), agent_user:users(name)"
+    ).eq("id", appt_id).single().execute()
+    return _enrich(res.data, 0)

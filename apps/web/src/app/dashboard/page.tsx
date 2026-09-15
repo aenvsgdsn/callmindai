@@ -13,17 +13,19 @@ import {
   Target, Award, Send,
   Building2, DollarSign, Home, PhoneCall, MessageSquare,
   X, LogOut, Loader2, Activity, CheckCircle2,
-  TrendingUp
+  TrendingUp, Camera, Upload
 } from "lucide-react";
 import CallMindLogo from "../components/CallMindLogo";
 import {
   leadsApi, strategiesApi, conversationsApi, appointmentsApi, analyticsApi,
+  usersApi, UserProfile,
   login, setAuth, clearAuth, getToken, getUser,
   Lead, Strategy, Conversation, Appointment,
   AnalyticsSummary, WeeklyDataPoint, FunnelDataPoint, ChannelDataPoint,
   CreateAppointmentPayload,
   getAvatarColor, formatDate, getIntentScore,
 } from "../lib/api";
+import { subscribeToConversation, subscribeToTable } from "../lib/supabase";
 
 
 // Email validation helper
@@ -105,21 +107,21 @@ function EmptyState({ icon, text }: { icon: React.ReactNode; text: string }) {
 // ─── Login Modal ───────────────────────────────────────────────────────────────
 
 function LoginModal({ onSuccess }: { onSuccess: () => void }) {
-  const [email, setEmail] = useState("admin@callmind.ai");
-  const [password, setPassword] = useState("admin123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-
-  async function handlePasswordLogin(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true); setError("");
     try {
-      await login(email, password);
+      const data = await login(email, password);
+      setAuth(data);
       toast("Welcome to CallMind AI!");
       onSuccess();
     } catch (err: any) {
-      setError(err.message || "Invalid credentials");
+      setError(err.message || "Invalid email or password");
     } finally {
       setLoading(false);
     }
@@ -131,13 +133,15 @@ function LoginModal({ onSuccess }: { onSuccess: () => void }) {
       access_token: "GUEST_TOKEN",
       token_type: "bearer",
       user_id: "guest",
-      agency_id: "default_agency",
+      agency_id: "00000000-0000-0000-0000-000000000001",
       name: "Guest User",
-      role: "agent"
+      role: "agency_admin"
     });
     onSuccess();
     setLoading(false);
   }
+
+  const inputStyle = { width: "100%", padding: "10px 14px", border: "1px solid var(--glass-border)", borderRadius: 10, fontSize: 14, background: "rgba(255,255,255,0.7)", outline: "none" };
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -146,55 +150,37 @@ function LoginModal({ onSuccess }: { onSuccess: () => void }) {
           <CallMindLogo size={32} showText={true} />
         </div>
         <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Sign in to Dashboard</h2>
-        <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 20 }}>
-          Sign in with your CallMind account or as guest
+        <p style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 24 }}>
+          Welcome back! Enter your credentials to continue.
         </p>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <button 
-            onClick={() => {
-              setEmail("admin@callmind.ai");
-              setPassword("admin123");
-              handlePasswordLogin(new Event('submit') as any);
-            }} 
-            className="btn-primary" 
-            style={{ width: "100%", justifyContent: "center", padding: "12px" }} 
-            disabled={loading}
-          >
-            {loading && email === "admin@callmind.ai" ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : "Login as Admin (Alex Johnson)"}
-          </button>
-          
-          <button 
-            onClick={() => {
-              setEmail("maria@callmind.ai");
-              setPassword("admin123");
-              handlePasswordLogin(new Event('submit') as any);
-            }} 
-            className="btn-primary" 
-            style={{ width: "100%", justifyContent: "center", padding: "12px", background: "var(--ink-primary)", color: "#fff" }} 
-            disabled={loading}
-          >
-            {loading && email === "maria@callmind.ai" ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : "Login as Admin (Maria Lee)"}
-          </button>
-          
-          {error && <div style={{ color: "#ef4444", fontSize: 13, padding: "8px 12px", background: "rgba(239,68,68,0.08)", borderRadius: 8 }}>{error}</div>}
-          
-          <div style={{ display: "flex", alignItems: "center", margin: "10px 0" }}>
-            <div style={{ flex: 1, height: 1, background: "var(--glass-border)" }} />
-            <span style={{ padding: "0 10px", fontSize: 12, color: "var(--ink-tertiary)", fontWeight: 600 }}>OR</span>
-            <div style={{ flex: 1, height: 1, background: "var(--glass-border)" }} />
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-secondary)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>EMAIL</label>
+            <input type="email" required value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} placeholder="admin@callmind.ai" />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-secondary)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>PASSWORD</label>
+            <input type="password" required value={password} onChange={e => setPassword(e.target.value)} style={inputStyle} placeholder="••••••••" />
           </div>
 
-          <button 
-            onClick={handleGuestLogin} 
-            className="btn-secondary" 
-            style={{ width: "100%", justifyContent: "center", background: "rgba(0,0,0,0.03)", padding: "12px" }} 
-            disabled={loading}
-          >
-            <User size={16} style={{ marginRight: 8, color: "var(--ink-secondary)" }} />
-            Continue as Guest User
+          {error && <div style={{ color: "#ef4444", fontSize: 13, padding: "8px 12px", background: "rgba(239,68,68,0.08)", borderRadius: 8 }}>{error}</div>}
+
+          <button type="submit" className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "12px", marginTop: 4 }} disabled={loading}>
+            {loading ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : "Sign In"}
           </button>
+        </form>
+
+        <div style={{ display: "flex", alignItems: "center", margin: "20px 0" }}>
+          <div style={{ flex: 1, height: 1, background: "var(--glass-border)" }} />
+          <span style={{ padding: "0 10px", fontSize: 12, color: "var(--ink-tertiary)", fontWeight: 600 }}>OR</span>
+          <div style={{ flex: 1, height: 1, background: "var(--glass-border)" }} />
         </div>
+
+        <button type="button" onClick={handleGuestLogin} className="btn-secondary" style={{ width: "100%", justifyContent: "center", padding: "11px", background: "rgba(0,0,0,0.03)" }} disabled={loading}>
+          <User size={16} style={{ marginRight: 8, color: "var(--ink-secondary)" }} />
+          Continue as Guest
+        </button>
       </div>
     </div>
   );
@@ -438,6 +424,14 @@ function Sidebar({ activePage, setActivePage, collapsed, setCollapsed }: {
 }) {
   const user = getUser();
   const initials = user?.name?.split(" ").map(n => n[0]).join("").slice(0, 2) || "??";
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user?.id && user.id !== "guest") {
+      usersApi.me().then(p => { if (p.avatar_url) setAvatarUrl(p.avatar_url); }).catch(() => {});
+    }
+  }, []);
+
 
   const mainNav = [
     { id: "dashboard", icon: <LayoutDashboard size={18} />, label: "Dashboard" },
@@ -481,7 +475,11 @@ function Sidebar({ activePage, setActivePage, collapsed, setCollapsed }: {
       </nav>
       <div className="sidebar-footer">
         <div className={`sidebar-user ${collapsed ? "sidebar-user-collapsed" : ""}`}>
-          <div className="sidebar-user-avatar">{initials}</div>
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="avatar" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", flexShrink: 0, border: "2px solid var(--glass-border)" }} />
+          ) : (
+            <div className="sidebar-user-avatar">{initials}</div>
+          )}
           {!collapsed && (
             <div className="sidebar-user-info">
               <div className="sidebar-user-name">{user?.name || "User"}</div>
@@ -489,13 +487,19 @@ function Sidebar({ activePage, setActivePage, collapsed, setCollapsed }: {
             </div>
           )}
         </div>
-        <Link href="/" style={{ textDecoration: "none" }}>
+        <div onClick={() => {
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("callmind_token");
+            localStorage.removeItem("callmind_user");
+            window.location.href = "/";
+          }
+        }} style={{ textDecoration: "none", cursor: "pointer" }}>
           <div className={`nav-item ${collapsed ? "nav-item-icon-only" : ""}`}
             style={{ marginTop: "12px", color: "var(--ink-secondary)" }} title={collapsed ? "Exit" : undefined}>
             <span className="nav-item-icon"><LogOut size={18} /></span>
-            {!collapsed && "Exit"}
+            {!collapsed && "Log Out"}
           </div>
-        </Link>
+        </div>
       </div>
     </aside>
   );
@@ -524,7 +528,7 @@ function TopBar({ activePage, onCta }: { activePage: string; onCta?: () => void 
       <div className="top-bar-right">
         <div className="search-bar">
           <Search size={16} className="search-icon" />
-          <input type="text" placeholder="Search leads, strategies…" />
+          <input type="text" placeholder="Search leads, strategies…" name="callmind-global-search" autoComplete="off" />
         </div>
         <button className="icon-btn" title="Notifications">
           <Bell size={18} />
@@ -566,22 +570,26 @@ function StatCards({ summary }: { summary: AnalyticsSummary | null }) {
   );
 }
 
-function DashboardHome({ summary, weeklyData, monthlyData, funnelData, leads, onLeadClick }: {
+function DashboardHome({ summary, weeklyData, monthlyData, funnelData, leads, strategies, onLeadClick, onNavigate }: {
   summary: AnalyticsSummary | null;
   weeklyData: WeeklyDataPoint[];
   monthlyData: WeeklyDataPoint[];
   funnelData: FunnelDataPoint[];
   leads: Lead[];
+  strategies: Strategy[];
   onLeadClick: (lead: Lead) => void;
+  onNavigate: (page: string) => void;
 }) {
   const [chartRange, setChartRange] = useState<"week" | "month">("week");
   const chartData = chartRange === "week" ? weeklyData : monthlyData;
   const maxVal = Math.max(...chartData.map(d => d.conversations), 1);
 
+  const hotLeadsCount = leads.filter(l => l.score >= 80 && l.status === "new").length;
+  const pendingStrategiesCount = strategies.filter(s => s.status === "pending_approval").length;
+
   const mockRecommendations = [
-    { title: "Follow up with Hot Leads", desc: "3 leads have high intent scores but haven't been contacted in 48 hours.", action: "View Leads", icon: <AlertTriangle size={18} />, color: "#f59e0b", bg: "rgba(245,158,11,0.1)" },
-    { title: "Google Ads Optimization", desc: "Conversion rate dropped by 1.2% this week. Consider reviewing the new campaign.", action: "Review Campaign", icon: <TrendingUp size={18} />, color: "#ef4444", bg: "rgba(239,68,68,0.1)" },
-    { title: "New AI Strategies Available", desc: "5 new engagement strategies are awaiting your approval.", action: "Review Strategies", icon: <Brain size={18} />, color: "#0d9488", bg: "rgba(13,148,136,0.1)" }
+    { title: "Follow up with Hot Leads", desc: `${hotLeadsCount} leads have high intent scores but haven't been contacted recently.`, action: "View Leads", icon: <AlertTriangle size={18} />, color: "#f59e0b", bg: "rgba(245,158,11,0.1)", onClick: () => onNavigate("leads") },
+    { title: "New AI Strategies Available", desc: `${pendingStrategiesCount} new engagement strategies are awaiting your approval.`, action: "Review Strategies", icon: <Brain size={18} />, color: "#0d9488", bg: "rgba(13,148,136,0.1)", onClick: () => onNavigate("strategies") }
   ];
 
   return (
@@ -603,7 +611,7 @@ function DashboardHome({ summary, weeklyData, monthlyData, funnelData, leads, on
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{rec.title}</div>
               </div>
               <p style={{ fontSize: 13, color: "var(--ink-secondary)", lineHeight: 1.5, flex: 1 }}>{rec.desc}</p>
-              <button className="btn-secondary" style={{ alignSelf: "flex-start", padding: "6px 14px", fontSize: 12 }}>{rec.action} <ChevronRight size={14} /></button>
+              <button className="btn-secondary" style={{ alignSelf: "flex-start", padding: "6px 14px", fontSize: 12 }} onClick={rec.onClick}>{rec.action} <ChevronRight size={14} /></button>
             </div>
           ))}
         </div>
@@ -840,6 +848,31 @@ function ConversationsPage({ conversations, loading, onRefresh }: { conversation
 
   useEffect(() => { setLocalConvs(conversations); }, [conversations]);
   useEffect(() => { chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [selected, localConvs]);
+
+  // ── Real-time: subscribe to message updates on the active conversation ──
+  useEffect(() => {
+    if (!selected) return;
+    const unsub = subscribeToConversation(selected, (updated) => {
+      setLocalConvs(prev => prev.map(c =>
+        c.id === selected
+          ? { ...c, messages: (updated.messages as any) || c.messages }
+          : c
+      ));
+    });
+    return unsub;
+  }, [selected]);
+
+  // ── Real-time: new conversations appear in sidebar without refresh ──
+  useEffect(() => {
+    const user = getUser();
+    if (!user?.agency_id) return;
+    const unsub = subscribeToTable("conversations", user.agency_id, (payload) => {
+      if (payload.eventType === "INSERT") {
+        onRefresh();
+      }
+    });
+    return unsub;
+  }, [onRefresh]);
 
   const activeConv = localConvs.find(c => c.id === selected);
 
@@ -1345,11 +1378,59 @@ function SettingsPage() {
   const [currentPwd, setCurrentPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
 
+  // Profile fields
+  const [profileName, setProfileName] = useState(user?.name || "");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  // Load profile on mount
+  useEffect(() => {
+    usersApi.me().then(profile => {
+      setProfileName(profile.name);
+      setAvatarUrl(profile.avatar_url);
+    }).catch(() => {});
+  }, []);
+
+  async function handleSaveProfile() {
+    setProfileSaving(true);
+    try {
+      await usersApi.updateProfile({ name: profileName });
+      const u = getUser();
+      if (u) {
+        u.name = profileName;
+        localStorage.setItem("callmind_user", JSON.stringify(u));
+        window.location.reload(); // Force refresh to update Sidebar user name
+      }
+      toast("Profile saved successfully!");
+    } catch (e: any) {
+      toast(e.message || "Failed to save", "error");
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarUploading(true);
+    try {
+      const { avatar_url } = await usersApi.uploadAvatar(file);
+      setAvatarUrl(avatar_url);
+      toast("Profile photo updated!");
+    } catch (err: any) {
+      toast(err.message || "Upload failed", "error");
+    } finally {
+      setAvatarUploading(false);
+    }
+  }
+
   const tabs = [
-    { id: "profile", label: "Profile", icon: <User size={15} /> },
+    { id: "profile",       label: "Profile",       icon: <User size={15} /> },
     { id: "notifications", label: "Notifications", icon: <BellIcon size={15} /> },
-    { id: "ai", label: "AI Settings", icon: <Brain size={15} /> },
-    { id: "security", label: "Security", icon: <Shield size={15} /> },
+    { id: "ai",            label: "AI Settings",   icon: <Brain size={15} /> },
+    { id: "security",      label: "Security",      icon: <Shield size={15} /> },
   ];
 
   const inputStyle = { width: "100%", padding: "10px 14px", border: "1px solid var(--glass-border)", borderRadius: 10, fontSize: 14, background: "rgba(255,255,255,0.7)", color: "var(--ink-primary)", outline: "none", fontFamily: "var(--font-display)" };
@@ -1367,15 +1448,70 @@ function SettingsPage() {
         {activeTab === "profile" && (
           <div className="glass-card">
             <div className="card-title" style={{ marginBottom: 24 }}>Profile Settings</div>
+
+            {/* Avatar */}
             <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 28 }}>
-              <div className="sidebar-user-avatar" style={{ width: 64, height: 64, fontSize: 20 }}>{user?.name?.split(" ").map(n => n[0]).join("").slice(0, 2) || "??"}</div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>{user?.name || "User"}</div>
-                <div style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 10 }}>{user?.role === "agency_admin" ? "Agency Admin" : user?.role}</div>
-                <button className="btn-secondary" style={{ padding: "6px 14px", fontSize: 12 }}>Change Photo</button>
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="avatar"
+                    style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover",
+                      border: "3px solid var(--glass-border)", boxShadow: "0 2px 12px rgba(0,0,0,0.1)" }} />
+                ) : (
+                  <div className="sidebar-user-avatar" style={{ width: 72, height: 72, fontSize: 22 }}>
+                    {user?.name?.split(" ").map(n => n[0]).join("").slice(0, 2) || "??"}
+                  </div>
+                )}
+                <button
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={avatarUploading}
+                  style={{
+                    position: "absolute", bottom: 0, right: 0,
+                    width: 26, height: 26, borderRadius: "50%",
+                    background: "#0d9488", border: "2px solid #fff",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "pointer", color: "#fff",
+                  }}
+                  title="Change photo"
+                >
+                  {avatarUploading ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> : <Camera size={12} />}
+                </button>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  style={{ display: "none" }}
+                  onChange={handleAvatarChange}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{user?.name || "User"}</div>
+                <div style={{ fontSize: 13, color: "var(--ink-secondary)", marginBottom: 12 }}>
+                  {user?.role === "agency_admin" ? "Agency Admin" : user?.role}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--ink-tertiary)" }}>Click the camera icon to change your photo</div>
               </div>
             </div>
-            <button className="btn-primary" onClick={() => toast("Profile saved successfully!")}>Save Changes</button>
+
+            {/* Name field */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.05em", color: "var(--ink-secondary)", display: "block", marginBottom: 6 }}>Display Name</label>
+              <input
+                type="text"
+                value={profileName}
+                onChange={e => setProfileName(e.target.value)}
+                style={inputStyle}
+                placeholder="Your full name"
+              />
+            </div>
+
+            <button
+              className="btn-primary"
+              onClick={handleSaveProfile}
+              disabled={profileSaving}
+            >
+              {profileSaving ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : null}
+              Save Changes
+            </button>
           </div>
         )}
         {activeTab === "notifications" && (
@@ -1404,18 +1540,25 @@ function SettingsPage() {
             <div className="card-title" style={{ marginBottom: 4 }}>Security</div>
             <div className="card-subtitle" style={{ marginBottom: 20 }}>Manage your account security settings</div>
             <div style={{ marginBottom: 16 }}>
+              {/* Hidden username input to absorb browser autofill so it doesn't infect the top search bar */}
+              <input type="text" autoComplete="username" defaultValue={user?.email || ""} style={{ display: "none" }} />
               <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-secondary)", display: "block", marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>Current Password</label>
-              <input type="password" value={currentPwd} onChange={e => setCurrentPwd(e.target.value)} placeholder="••••••••••••" style={inputStyle} />
+              <input type="password" value={currentPwd} onChange={e => setCurrentPwd(e.target.value)} placeholder="••••••••••••" style={inputStyle} autoComplete="current-password" />
             </div>
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-secondary)", display: "block", marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>New Password</label>
-              <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} placeholder="••••••••••••" style={inputStyle} />
+              <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} placeholder="••••••••••••" style={inputStyle} autoComplete="new-password" />
             </div>
-            <button className="btn-primary" onClick={() => {
+            <button className="btn-primary" onClick={async () => {
               if (!currentPwd || !newPwd) { toast("Please fill in both fields", "error"); return; }
               if (newPwd.length < 6) { toast("Password must be at least 6 characters", "error"); return; }
-              toast("Password updated successfully!");
-              setCurrentPwd(""); setNewPwd("");
+              try {
+                await usersApi.updatePassword({ current_password: currentPwd, new_password: newPwd });
+                toast("Password updated successfully!");
+                setCurrentPwd(""); setNewPwd("");
+              } catch (e: any) {
+                toast(e.message || "Failed to update password", "error");
+              }
             }}>Update Password</button>
           </div>
         )}
@@ -1430,6 +1573,7 @@ export default function Dashboard() {
   const [activePage, setActivePage] = useState("dashboard");
   const [collapsed, setCollapsed] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [showAddLead, setShowAddLead] = useState(false);
   const [showBookAppt, setShowBookAppt] = useState(false);
 
@@ -1445,6 +1589,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState({ leads: true, strategies: true, conversations: true, appointments: true, analytics: true });
 
   useEffect(() => {
+    setMounted(true);
     // Check custom FastAPI backend token instead of Supabase
     const token = typeof window !== "undefined" ? localStorage.getItem("callmind_token") : null;
     setAuthenticated(!!token);
@@ -1494,9 +1639,11 @@ export default function Dashboard() {
       case "appointments": return <AppointmentsPage appointments={appointments} leads={leads} loading={loading.appointments} onRefresh={fetchAll} />;
       case "analytics": return <AnalyticsPage summary={summary} weeklyData={weeklyData} funnelData={funnelData} channelData={channelData} />;
       case "settings": return <SettingsPage />;
-      default: return <DashboardHome summary={summary} weeklyData={weeklyData} monthlyData={monthlyData} funnelData={funnelData} leads={leads} onLeadClick={handleLeadClick} />;
+      default: return <DashboardHome summary={summary} weeklyData={weeklyData} monthlyData={monthlyData} funnelData={funnelData} leads={leads} strategies={strategies} onLeadClick={handleLeadClick} onNavigate={setActivePage} />;
     }
   };
+
+  if (!mounted) return null;
 
   return (
     <div className="app-layout">

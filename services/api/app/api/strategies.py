@@ -1,132 +1,137 @@
 """
-Strategies router: list, approve, reject qualification strategies.
-Merged from approvals.py + new list endpoint.
+Strategies router — Supabase-powered with optimized JOIN queries.
 """
-from typing import List, Optional
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
-from app.db.database import get_db
-from app.db.models import QualificationStrategy, Lead, User
-from app.schemas.strategy import StrategyApprovalRequest, StrategyResponse
+from app.db.supabase_client import sb
 from app.core.security import CurrentUser, get_current_user, require_role
-from app.services.audit import record_audit_log
 
 router = APIRouter(prefix="/strategies", tags=["Strategies"])
-
-
-class StrategyWithLead(BaseModel):
-    id: str
-    lead_id: str
-    lead_name: str
-    lead_avatar_color: str
-    objective: str
-    questions: List[str]
-    status: str
-    approved_by: Optional[str] = None
-    created_at: str
-
-    class Config:
-        from_attributes = True
-
 
 AVATAR_COLORS = ["v", "b", "g", "a", "r"]
 
 
-@router.get("", response_model=List[StrategyWithLead])
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _enrich(s: dict, idx: int) -> dict:
+    lead      = s.get("lead")     or {}
+    approver  = s.get("approver") or {}
+
+    created_at = s.get("created_at", "")
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        created_str = dt.strftime("%b %d, %I:%M %p")
+    except Exception:
+        created_str = created_at
+
+    return {
+        "id":               s["id"],
+        "lead_id":          s["lead_id"],
+        "lead_name":        lead.get("name", "Unknown"),
+        "lead_avatar_color": AVATAR_COLORS[idx % len(AVATAR_COLORS)],
+        "objective":        s.get("objective", ""),
+        "questions":        s.get("questions") or [],
+        "status":           s.get("status", "pending"),
+        "approved_by":      approver.get("name") or s.get("approved_by"),
+        "created_at":       created_str,
+    }
+
+
+# ── Routes ────────────────────────────────────────────────────────────────────
+
+@router.get("")
 def list_strategies(
     status_filter: Optional[str] = None,
-    db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """List all qualification strategies for this agency, joined with lead name."""
-    query = db.query(QualificationStrategy).join(Lead).filter(
-        Lead.agency_id == current_user.agency_id
-    )
+    """
+    Single JOIN query: strategy + lead name + approver name.
+    Old code: N+1 Python loop per strategy.
+    """
+    query = sb().table("qualification_strategies").select(
+        "*, lead:leads(name), approver:users(name)"
+    ).eq("agency_id", current_user.agency_id).order("created_at", desc=True)
+
     if status_filter:
-        query = query.filter(QualificationStrategy.status == status_filter)
+        query = query.eq("status", status_filter)
 
-    strategies = query.order_by(QualificationStrategy.created_at.desc()).all()
-
-    result = []
-    for i, s in enumerate(strategies):
-        lead = db.query(Lead).filter(Lead.id == s.lead_id).first()
-        result.append(StrategyWithLead(
-            id=s.id,
-            lead_id=s.lead_id,
-            lead_name=lead.name if lead else "Unknown",
-            lead_avatar_color=AVATAR_COLORS[i % len(AVATAR_COLORS)],
-            objective=s.objective,
-            questions=s.questions or [],
-            status=s.status,
-            approved_by=s.approved_by,
-            created_at=s.created_at.strftime("%b %d, %I:%M %p") if s.created_at else "",
-        ))
-    return result
+    res = query.execute()
+    return [_enrich(s, i) for i, s in enumerate(res.data or [])]
 
 
-@router.post("/{strategy_id}/approve", response_model=StrategyResponse)
+@router.post("/{strategy_id}/approve")
 def approve_strategy(
     strategy_id: str,
-    payload: StrategyApprovalRequest,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(["agency_admin", "sales_manager"])),
+    payload: dict,
+    current_user: CurrentUser = Depends(
+        require_role(["agency_admin", "sales_manager"])
+    ),
 ):
-    strategy = db.query(QualificationStrategy).join(Lead).filter(
-        QualificationStrategy.id == strategy_id,
-        Lead.agency_id == current_user.agency_id
-    ).first()
+    res = sb().table("qualification_strategies").select(
+        "id, lead_id"
+    ).eq("id", strategy_id).eq("agency_id", current_user.agency_id).single().execute()
 
-    if not strategy:
-        raise HTTPException(status_code=404, detail="Strategy not found or access denied")
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Strategy not found")
 
-    strategy.status = "approved"
-    strategy.approved_by = current_user.id
-    if payload.custom_questions:
-        strategy.questions = payload.custom_questions
+    update_data = {
+        "status":      "approved",
+        "approved_by": current_user.id,
+    }
+    if payload.get("custom_questions"):
+        update_data["questions"] = payload["custom_questions"]
 
-    db.commit()
-    db.refresh(strategy)
+    sb().table("qualification_strategies").update(update_data).eq(
+        "id", strategy_id
+    ).execute()
 
-    record_audit_log(
-        db=db,
-        agency_id=current_user.agency_id,
-        actor_type="user",
-        actor_id=current_user.id,
-        event_type="strategy_approved",
-        entity_type="strategy",
-        entity_id=strategy.id,
-        metadata={"approved_by": current_user.email}
-    )
-    return strategy
+    # Audit
+    sb().table("audit_logs").insert({
+        "agency_id":   current_user.agency_id,
+        "actor_type":  "user",
+        "actor_id":    current_user.id,
+        "event_type":  "strategy_approved",
+        "entity_type": "strategy",
+        "entity_id":   strategy_id,
+        "metadata":    {"approved_by": current_user.email},
+    }).execute()
+
+    # Return updated record
+    updated = sb().table("qualification_strategies").select(
+        "*, lead:leads(name), approver:users(name)"
+    ).eq("id", strategy_id).single().execute()
+    return _enrich(updated.data, 0)
 
 
 @router.post("/{strategy_id}/reject")
 def reject_strategy(
     strategy_id: str,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Depends(require_role(["agency_admin", "sales_manager"])),
+    current_user: CurrentUser = Depends(
+        require_role(["agency_admin", "sales_manager"])
+    ),
 ):
-    strategy = db.query(QualificationStrategy).join(Lead).filter(
-        QualificationStrategy.id == strategy_id,
-        Lead.agency_id == current_user.agency_id
-    ).first()
+    res = sb().table("qualification_strategies").select("id").eq(
+        "id", strategy_id
+    ).eq("agency_id", current_user.agency_id).single().execute()
 
-    if not strategy:
-        raise HTTPException(status_code=404, detail="Strategy not found or access denied")
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Strategy not found")
 
-    strategy.status = "rejected"
-    db.commit()
+    sb().table("qualification_strategies").update({"status": "rejected"}).eq(
+        "id", strategy_id
+    ).execute()
 
-    record_audit_log(
-        db=db,
-        agency_id=current_user.agency_id,
-        actor_type="user",
-        actor_id=current_user.id,
-        event_type="strategy_rejected",
-        entity_type="strategy",
-        entity_id=strategy.id,
-        metadata={"rejected_by": current_user.email}
-    )
+    sb().table("audit_logs").insert({
+        "agency_id":   current_user.agency_id,
+        "actor_type":  "user",
+        "actor_id":    current_user.id,
+        "event_type":  "strategy_rejected",
+        "entity_type": "strategy",
+        "entity_id":   strategy_id,
+        "metadata":    {"rejected_by": current_user.email},
+    }).execute()
+
     return {"status": "rejected", "strategy_id": strategy_id}
