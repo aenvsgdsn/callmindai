@@ -340,6 +340,7 @@ p { margin: 0; line-height: 1.6; }
 /* ===== ANIMATIONS ===== */
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeInUpCenter { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-10px); } }
 
 /* ===== MARKETING PAGE ===== */
@@ -481,7 +482,7 @@ p { margin: 0; line-height: 1.6; }
   border: 1px solid rgba(255,255,255,0.72);
   border-radius: 24px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.10), 0 1px 0 rgba(255,255,255,0.9) inset;
-  animation: fadeInUp 200ms ease-out both;
+  animation: fadeInUpCenter 200ms ease-out both;
   z-index: 1001;
 }
 .mobile-nav-link {
