@@ -68,28 +68,35 @@ def _mint_token(user_id: str, agency_id: str, email: str, role: str) -> str:
 
 @router.post("/login", response_model=LoginResponse)
 def login(payload: LoginRequest):
-    email = payload.email.lower().strip()
+    try:
+        email = payload.email.lower().strip()
 
-    res = sb().table("users").select(
-        "id, agency_id, name, email, password_hash, role"
-    ).eq("email", email).single().execute()
+        res = sb().table("users").select(
+            "id, agency_id, name, email, password_hash, role"
+        ).eq("email", email).single().execute()
 
-    if not res.data:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        if not res.data:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    user = res.data
+        user = res.data
 
-    if user.get("password_hash") and not _verify(payload.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        if user.get("password_hash") and not _verify(payload.password, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    token = _mint_token(user["id"], user["agency_id"], user["email"], user["role"])
-    return LoginResponse(
-        access_token=token,
-        user_id=user["id"],
-        agency_id=user["agency_id"],
-        name=user["name"],
-        role=user["role"],
-    )
+        token = _mint_token(user["id"], user["agency_id"], user["email"], user["role"])
+        return LoginResponse(
+            access_token=token,
+            user_id=user["id"],
+            agency_id=user["agency_id"],
+            name=user["name"],
+            role=user["role"],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        err_msg = str(e) + "\n" + traceback.format_exc()
+        raise HTTPException(status_code=500, detail=f"Server error: {err_msg}")
 
 
 @router.post("/register", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)

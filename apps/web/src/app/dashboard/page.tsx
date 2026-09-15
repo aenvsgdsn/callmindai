@@ -171,16 +171,6 @@ function LoginModal({ onSuccess }: { onSuccess: () => void }) {
           </button>
         </form>
 
-        <div style={{ display: "flex", alignItems: "center", margin: "20px 0" }}>
-          <div style={{ flex: 1, height: 1, background: "var(--glass-border)" }} />
-          <span style={{ padding: "0 10px", fontSize: 12, color: "var(--ink-tertiary)", fontWeight: 600 }}>OR</span>
-          <div style={{ flex: 1, height: 1, background: "var(--glass-border)" }} />
-        </div>
-
-        <button type="button" onClick={handleGuestLogin} className="btn-secondary" style={{ width: "100%", justifyContent: "center", padding: "11px", background: "rgba(0,0,0,0.03)" }} disabled={loading}>
-          <User size={16} style={{ marginRight: 8, color: "var(--ink-secondary)" }} />
-          Continue as Guest
-        </button>
       </div>
     </div>
   );
