@@ -29,6 +29,7 @@ export interface Lead {
   contact_eligibility: boolean;
   consent_status: string;
   created_at: string;
+  score?: number;
   // computed/enriched on frontend
   avatarColor?: string;
   date?: string;

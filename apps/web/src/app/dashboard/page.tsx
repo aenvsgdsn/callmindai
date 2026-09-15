@@ -1541,7 +1541,7 @@ function SettingsPage() {
             <div className="card-subtitle" style={{ marginBottom: 20 }}>Manage your account security settings</div>
             <div style={{ marginBottom: 16 }}>
               {/* Hidden username input to absorb browser autofill so it doesn't infect the top search bar */}
-              <input type="text" autoComplete="username" defaultValue={user?.email || ""} style={{ display: "none" }} />
+              <input type="text" autoComplete="username" defaultValue={(user as any)?.email || ""} style={{ display: "none" }} />
               <label style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-secondary)", display: "block", marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>Current Password</label>
               <input type="password" value={currentPwd} onChange={e => setCurrentPwd(e.target.value)} placeholder="••••••••••••" style={inputStyle} autoComplete="current-password" />
             </div>
