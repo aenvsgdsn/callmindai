@@ -518,6 +518,30 @@ p { margin: 0; line-height: 1.6; }
 
 .mobile-nav-divider { height: 1px; background: rgba(0,0,0,0.06); margin: 6px 0; }
 
+/* ── Responsive utilities ── */
+/* On desktop: show desktop-only, hide mobile-only */
+.desktop-only { display: flex; }
+.mobile-only  { display: none; }
+
+/* On mobile (≤ 768px): flip them */
+@media (max-width: 768px) {
+  .desktop-only { display: none !important; }
+  .mobile-only  { display: flex !important; }
+
+  /* Widen the nav pill so it doesn't overflow */
+  .nav-container {
+    min-width: 0;
+    width: calc(100vw - 32px);
+    gap: 0;
+  }
+
+  /* Push hamburger to the far right */
+  .nav-container { justify-content: space-between; }
+
+  /* Mobile-menu-btn already has display:none above; override here */
+  .mobile-menu-btn { display: flex; }
+}
+
 /* --- Hero --- */
 /* Full-bleed background image hero — concave scoop bottom cut */
 .hero-wrapper {

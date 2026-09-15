@@ -46,7 +46,12 @@ export default function MarketingPage() {
           </div>
 
           <div className="nav-actions desktop-only">
-            <Link href="/dashboard" className="btn-secondary">Log In</Link>
+            <Link href="/dashboard?login=true" className="btn-secondary" onClick={() => {
+              if (typeof window !== "undefined") {
+                localStorage.removeItem("callmind_token");
+                localStorage.removeItem("callmind_user");
+              }
+            }}>Log In</Link>
           </div>
 
           {/* Mobile hamburger */}
@@ -62,7 +67,13 @@ export default function MarketingPage() {
         {mobileOpen && (
           <div className="mobile-menu">
             {/* Login — highlighted at top */}
-            <Link href="/dashboard" className="mobile-nav-login-btn" onClick={() => setMobileOpen(false)}>
+            <Link href="/dashboard?login=true" className="mobile-nav-login-btn" onClick={() => {
+              setMobileOpen(false);
+              if (typeof window !== "undefined") {
+                localStorage.removeItem("callmind_token");
+                localStorage.removeItem("callmind_user");
+              }
+            }}>
               Log In
             </Link>
             <div className="mobile-nav-divider" />
